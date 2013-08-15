@@ -1,0 +1,375 @@
+<!DOCTYPE html><html class="ltr" dir="ltr" lang="en-US">
+
+<head>
+	<title>CVSSv2 Liferay calculator</title>
+	<meta content="text/html; charset=UTF-8" http-equiv="content-type" />
+	<style type="text/css">
+		* {
+			line-height: 30px;
+		}
+		input {
+			line-height: 20px;
+		}
+		#vector {
+			width: 200px;
+		}
+		#metrics span {
+			display: none;
+		}
+		#metrics span.visible {
+			display: inline;
+		}
+		label {
+			display: block;
+			float: left;
+			width: 200px;
+		}
+		.important {
+		}
+		#jiraFormatting {
+			padding-left: 50px;
+		}
+	</style>
+	<script type="text/javascript">
+
+		/*
+		 * See http://en.wikipedia.org/wiki/CVSS for f(impact), round_to_1_decimal() and scoring functions
+         */
+		function f(impact) {
+			if (impact == 0) {
+				return 0;
+			}
+			return 1.176;
+		}
+
+		function round_to_1_decimal(n) {
+			return Math.round(n * 10) / 10;
+		}
+
+		function countBaseScore() {
+			var AccessVector = getWeight('AV');
+			var AccessComplexity = getWeight('AC');
+			var Authentication = getWeight('AU');
+			var ConfImpact = getWeight('C');
+			var IntegImpact = getWeight('I');
+			var AvailImpact = getWeight('A');
+
+			var Exploitability = 20* AccessVector*AccessComplexity*Authentication
+			var Impact = 10.41*(1-(1-ConfImpact)*(1-IntegImpact)*(1-AvailImpact))
+			var BaseScore = round_to_1_decimal(((0.6*Impact)+(0.4*Exploitability)-1.5)*f(Impact))
+
+			return BaseScore;
+		}
+
+		function countTemporalScore(BaseScore) {
+			var Exploitability = getWeight('E');
+			var RemediationLevel = getWeight('RL');
+			var ReportConfidence = getWeight('RC');
+			var TemporalScore = round_to_1_decimal(BaseScore*Exploitability*RemediationLevel*ReportConfidence)
+
+			return TemporalScore;
+		}
+
+		/*
+		 * Create vector
+		 */
+		function buildBaseScoreVector() {
+			var AccessVector = getValue('AV');
+			var AccessComplexity = getValue('AC');
+			var Authentication = getValue('AU');
+			var ConfImpact = getValue('C');
+			var IntegImpact = getValue('I');
+			var AvailImpact = getValue('A');
+
+			var result =
+				'AV:' + AccessVector + 
+				'/AC:' + AccessComplexity + 
+				'/Au:' + Authentication + 
+				'/C:' + ConfImpact + 
+				'/I:' + IntegImpact + 
+				'/A:' + AvailImpact;
+			return result;
+		}
+
+		function buildTemporalScoreVector() {
+			var Exploitability = getValue('E');
+			var RemediationLevel = getValue('RL');
+			var ReportConfidence = getValue('RC');
+
+			var result =
+				'E:' + Exploitability + 
+				'/RL:' + RemediationLevel + 
+				'/RC:' + ReportConfidence;
+			return result;
+		}
+
+
+		/*
+		 * Print score & vector
+		 */
+		function process() {
+			var BaseScore = countBaseScore();
+			var TemporalScore = countTemporalScore(BaseScore);
+
+			var BaseScoreVector = buildBaseScoreVector();
+			var TemporalScoreVector = buildTemporalScoreVector();
+			var Vector = '(' + BaseScoreVector + '/' + TemporalScoreVector + ')';
+
+			var FixPriority = Math.round((BaseScore + 1) / 2);
+			document.getElementById('FixPriority').innerText = FixPriority;
+			document.getElementById('Vector').innerText = Vector;
+			
+			var jiraFormatting = 
+				'----\n' +
+				'CVSS Base Score: ' + BaseScore + '\n' + 
+				'CVSS Temporal Score: ' + TemporalScore + '\n' + 
+				'CVSS Vector: {{' + Vector.replace(/:P/g, '\\:P') + '}}';
+
+			document.getElementById('jiraFormatting').innerText = jiraFormatting;
+
+		}
+
+		/*
+		 * Parse vector and update UI
+		 */
+		function processVector(vector) {
+			if (!vector) {
+				vector = document.getElementById('vector').value;
+			}
+
+			vector = vector.toUpperCase().replace(/^\s+|\s+$/g, '');
+			if (vector[0] == '('){
+				vector = vector.substr(1, vector.length - 1);
+			}
+			if (vector[vector.length - 1] == ')') {
+				vector = vector.substr(0, vector.length - 1);
+			}
+			var metrics = vector.split('/');
+			for (var i = 0; i < metrics.length; i++) {
+				var selId = metrics[i].split(':')[0];
+				var val = metrics[i].split(':')[1];
+				var sel = document.getElementById(selId);
+				if (sel) {
+					sel.value = val;
+				}
+			}
+
+			updateHelps();
+			process();
+			
+		}
+
+		/*
+		 * Helper methods
+		 */
+		function getValue(id) {
+			var sel = document.getElementById(id);
+			var value = sel.value;
+
+			return value;
+		}
+
+		function getWeight(id) {
+			var sel = document.getElementById(id);
+			var value = sel.value;
+
+			for (var option, j = 0; option = sel.options[j]; j++) {
+				if (option.value == value) {
+				    return parseFloat(option.getAttribute("weight"));
+				}
+			}
+
+			return 0;
+		}
+
+
+		/*
+		 * UI Helper methods
+		 */
+		function start() {
+			updateHelps();
+			process();
+		}
+		
+		function reload(sel) {
+			updateHelp(sel);
+			process();
+		}
+
+		function updateHelps() {
+			var sels = document.getElementsByTagName("select");
+			for (var i = 0; i < sels.length; i++) {
+				updateHelp(sels[i]);
+			}
+		}
+
+		function updateHelp(sel) {
+			var spans = sel.parentNode.getElementsByTagName("span");
+			for (var i = 0; i < spans.length; i++) {
+				spans[i].className = 'hidden';
+			}
+
+			var value = sel.value;
+			var helpNode = document.getElementById('help-' + sel.name + sel.value);
+			
+			helpNode.className = 'visible';
+		}
+
+	</script>
+</head>
+
+<body onload="start()">
+	<h1>CVSS v2 calc adapted for Liferay</h1>
+	<input type="text" name="vector" id="vector"/><input type="button" onclick="processVector()" value="Process Vector" />
+	<div class="important">Vector: <span id="Vector">0</span></div>
+	<hr />
+	<h3>Adapted to JIRA</h3>
+	<div class="important">Fix Priority: <span id="FixPriority">0</span></div>
+	<strong>Description:</strong>
+	<pre id="jiraFormatting"></pre>
+	<hr />
+		*** <input type="button" onclick="processVector('(AV:L/AC:H/Au:M/C:N/I:N/A:N/E:ND/RL:ND/RC:ND)')" value="RESET ALL" />
+		<h3>Base Metrics Templates</h3>
+		<strong>Exploitability</strong><input type="button" onclick="processVector('AV:L/AC:H/Au:M')" value="RESET" /><br />
+		---&gt; <input type="button" onclick="processVector('AV:N')" value="Remote" /><br />
+		---&gt; <input type="button" onclick="processVector('Au:S')" value="Signed in" /> or <input type="button" onclick="processVector('Au:N')" value="Guest" /><br />
+		---&gt; <input type="button" onclick="processVector('AC:M')" value="Not directly exploitable" /> or <input type="button" onclick="processVector('AC:L')" value="Direct attack" /><br />
+		<br />
+		<strong>Impact</strong><input type="button" onclick="processVector('C:N/I:N/A:N')" value="RESET" /><br />
+		---&gt;<input type="button" onclick="processVector('C:C/I:C/A:C')" value="Gets admin account" /><br />
+		---&gt;<input type="button" onclick="processVector('C:P')" value="Can read some files" /><br />
+		---&gt;<input type="button" onclick="processVector('I:P')" value="Can write/delete some files" /><br />
+		<h3>Temporal Metrics Templates</h3>
+		---&gt;<input type="button" onclick="processVector('RC:UC')" value="Not verified yet" /> or <input type="button" onclick="processVector('RC:C')" value="Verified" /><br />
+		---&gt;<input type="button" onclick="processVector('E:F')" value="Have steps to reproduce" /><br />
+		---&gt;<input type="button" onclick="processVector('RL:U')" value="Not fixed w/o workaround" /> or <input type="button" onclick="processVector('RL:TF')" value="Not fixed with workaround" /><br />
+		<input type="button" onclick="processVector('E:ND/RL:ND/RC:ND')" value="RESET Temporal" />
+		<h3>Examples</h3>
+		<input type="button" onclick="processVector('AV:N/AC:M/Au:N/C:C/I:C/A:C')" value="XSS w/o authentication" /><br />
+		<input type="button" onclick="processVector('AV:N/AC:M/Au:S/C:C/I:C/A:C')" value="XSS, authentication needed" /><br />
+		<input type="button" onclick="processVector('AV:N/AC:L/Au:N/C:N/I:N/A:C')" value="DoS w/o authentication" /><br />
+	<hr />
+	<h2>Standard CVSS v2 Calculator</h2>
+	<div id="metrics">
+	<h3>Base Metrics</h3>
+
+	<strong>Exploitability</strong>
+
+	<div><label for="AV">Access Vector (AV)</label>
+	<select onchange="reload(this)" name="AV" id="AV">
+		<option value="L" weight="0.395">L - Local</option>
+		<option value="A" weight="0.646">A - Adjacent Network</option>
+		<option value="N" weight="1.0">N - Network</option>
+	</select>
+	<span id="help-AVL">The attacker must either have physical access to the vulnerable system or a local account</span>
+	<span id="help-AVA">The attacker must have access to the broadcast or collision domain of the vulnerable system</span>
+	<span id="help-AVN">These types of vulnerabilities are often described as remotely exploitable </span>
+	</div>
+
+	<div><label for="AC">Access Complexity (AC)</label>
+	<select onchange="reload(this)" name="AC" id="AC">
+		<option value="H" weight="0.35">H - High</option>
+		<option value="M" weight="0.61">M - Medium</option>
+		<option value="L" weight="0.71">L - Low</option>
+	</select>
+	<span id="help-ACH">Specialised conditions exist, such as a race condition with a narrow window, or a requirement for social engineering methods that would be readily noticed by knowledgeable people.</span>
+	<span id="help-ACM">There are some additional requirements for access, such as a limit on the origin of the attacks, or a requirement for the vulnerable system to be running with an uncommon, non-default configuration.</span>
+	<span id="help-ACL">There are no special conditions for access to the vulnerability, such as when the system is available to large numbers of users, or the vulnerable configuration is ubiquitous.</span>
+	</div>
+
+	<div><label for="AU">Authentication (Au)</label>
+	<select onchange="reload(this)" name="AU" id="AU">
+		<option value="M" weight="0.45">M - Multiple instances</option>
+		<option value="S" weight="0.56">S - Single instance</option>
+		<option value="N" weight="0.704">N - None</option>
+	</select>
+	<span id="help-AUM">Exploitation of the vulnerability requires that the attacker authenticate two or more times, even if the same credentials are used each time.</span>
+	<span id="help-AUS">The attacker must authenticate once in order to exploit the vulnerability.</span>
+	<span id="help-AUN">There is no requirement for the attacker to authenticate.</span>
+	</div>
+
+	<strong>Impact</strong>
+
+	<div><label for="C">Confidentiality (C)</label>
+	<select onchange="reload(this)" name="C" id="C">
+		<option value="N" weight="0.0">N - None</option>
+		<option value="P" weight="0.275">P - Partial</option>
+		<option value="C" weight="0.660">C - Complete</option>
+	</select>
+	<span id="help-CN">There is no impact on the confidentiality of the system.</span>
+	<span id="help-CP">There is considerable disclosure of information, but the scope of the loss is constrained such that not all of the data is available.</span>
+	<span id="help-CC">There is total information disclosure, providing access to any / all data on the system.</span>
+	</div>
+
+	<div><label for="I">Integrity (I)</label>
+	<select onchange="reload(this)" name="I" id="I">
+		<option value="N" weight="0.0">N - None</option>
+		<option value="P" weight="0.275">P - Partial</option>
+		<option value="C" weight="0.660">C - Complete</option>
+	</select>
+	<span id="help-IN">There is no impact on the integrity of the system.</span>
+	<span id="help-IP">Modification of some data or system files is possible, but the scope of the modification is limited.</span>
+	<span id="help-IC">There is total loss of integrity; the attacker can modify any files or information on the target system.	</span>
+	</div>
+
+	<div><label for="A">Availability (A)</label>
+	<select onchange="reload(this)" name="A" id="A">
+		<option value="N" weight="0.0">N - None</option>
+		<option value="P" weight="0.275">P - Partial</option>
+		<option value="C" weight="0.660">C - Complete</option>
+	</select>
+	<span id="help-AN">There is no impact on the availability of the system.</span>
+	<span id="help-AP">There is reduced performance or loss of some functionality.	</span>
+	<span id="help-AC">There is total loss of availability of the attacked resource.</span>
+	</div>
+
+	<h3>Temporal Metrics</h3>
+
+	<div><label for="E">Exploitability (E)</label>
+	<select onchange="reload(this)" name="E" id="E">
+		<option value="U" weight="0.85">U - Unproven that exploit exists</option>
+		<option value="P" weight="0.9">P - Proof of concept code</option>
+		<option value="F" weight="0.95">F - Functional exploit exists</option>
+		<option value="H" weight="1">H - High</option>
+		<option value="ND" weight="1.0">ND - Not Defined</option>
+	</select>
+	<span id="help-EU">No exploit code is available, or the exploit is theoretical</span>
+	<span id="help-EP">Proof-of-concept exploit code or demonstration attacks are available, but not practical for widespread use. Not functional against all instances of the vulnerability.</span>
+	<span id="help-EF">Functional exploit code is available, and works in most situations where the vulnerability is present.</span>
+	<span id="help-EH">The vulnerability can be exploited by automated code, including mobile code (such as a worm or virus).</span>
+	<span id="help-END">This is a signal to ignore this score.</span>
+	</div>
+
+	<div><label for="RL">Remediation Level (RL)</label>
+	<select onchange="reload(this)" name="RL" id="RL">
+		<option value="OF" weight="0.87">OF - Official Fix</option>
+		<option value="TF" weight="0.90">TF - Temporary Fix - official workaround</option>
+		<option value="W" weight="0.95">W - Workaround - unofficial</option>
+		<option value="U" weight="1.0">U - Unavailable</option>
+		<option value="ND" weight="1.0">ND - Not Defined</option>
+	</select>
+	<span id="help-RLOF">A complete vendor solution is available - either a patch or an upgrade.	</span>
+	<span id="help-RLTF">There is an official but temporary fix / mitigation available from the vendor.</span>
+	<span id="help-RLW">There is an unofficial, non-vendor solution or mitigation available - perhaps developed or suggested by users of the affected product or another third party.</span>
+	<span id="help-RLU">There is no solution available, or it is impossible to apply a suggested solution. This is the usual initial state of the remediation level when a vulnerability is identified.	</span>
+	<span id="help-RLND">This is a signal to ignore this score.</span>
+	</div>
+
+	<div><label for="RC">Report Confidence (RC)</label>
+	<select onchange="reload(this)" name="RC" id="RC">
+		<option value="UC" weight="0.9">UC - Unconfirmed</option>
+		<option value="UN" weight="0.95">UN - Uncorroborated</option>
+		<option value="C" weight="1.0">C - Confirmed</option>
+		<option value="ND" weight="1.0">ND - Not Defined</option>
+	</select>
+	<span id="help-RCUC">A single unconfirmed source, or multiple conflicting sources. Rumored vulnerability.</span>
+	<span id="help-RCUN">Multiple sources that broadly agree - there may be a level of remaining uncertainty about the vulnerability	</span>
+	<span id="help-RCC">Acknowledged and confirmed by the vendor or manufacturer of the affected product.</span>
+	<span id="help-RCND">This is a signal to ignore this score.</span>
+	</div>
+
+	</div>
+
+	<hr />
+	&copy; 2013 Tomáš Polešovský, based on <a href="http://en.wikipedia.org/wiki/CVSS">http://en.wikipedia.org/wiki/CVSS</a>
+</body></html>
