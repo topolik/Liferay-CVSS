@@ -1,9 +1,9 @@
 Liferay-CVSS
 ============
 
-CVSS scoring tool for Liferay security issues.
+CVSS tool for scoring Liferay security issues.
 
-This tool is adapted to Liferay environment and helps to quickly define & verify CVSS score.
+The tool is adapted to Liferay environment and helps to quickly define & verify CVSS score. Well, "simple CVSS verification" is still in progress :)
 
 Published on http://topolik.cz/liferay/cvss.html
 
